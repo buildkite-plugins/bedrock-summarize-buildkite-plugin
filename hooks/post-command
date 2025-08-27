@@ -8,7 +8,8 @@ DIR="$(cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd)"
 # shellcheck source=lib/logs.bash
 . "$DIR/../lib/logs.bash"
 
-MODEL=$(plugin_read_config MODEL "claude-3-7-sonnet-20250219") # TODO: adjust for Bedrock model names
+MODEL=$(plugin_read_config MODEL "anthropic.claude-3-7-sonnet-20250219-v1:0")
+INFERENCE_PROFILE=$(plugin_read_config INFERENCE_PROFILE "us.anthropic.claude-3-7-sonnet-20250219-v1:0")
 TRIGGER=$(plugin_read_config TRIGGER "on-failure")
 ANALYSIS_LEVEL=$(plugin_read_config ANALYSIS_LEVEL "step")
 MAX_LOG_LINES=$(plugin_read_config MAX_LOG_LINES "1000")
@@ -27,11 +28,12 @@ COMPARISON_RANGE=$(plugin_read_config COMPARISON_RANGE "5")
 validate_tools || exit 1
 
 # Validate configuration
-validate_configuration "${MODEL}" "${TRIGGER}" "${ANALYSIS_LEVEL}" "${COMPARE_BUILDS}" "$(plugin_read_config BUILDKITE_API_TOKEN "")" || exit 1
+validate_configuration "${MODEL}" "${INFERENCE_PROFILE}" "${TRIGGER}" "${ANALYSIS_LEVEL}" "${COMPARE_BUILDS}" "$(plugin_read_config BUILDKITE_API_TOKEN "")" || exit 1
 
 echo "--- :robot_face: Bedrock Summarize Plugin (Post-Command)"
 
 echo "Model: ${MODEL}"
+echo "Inference Profile: ${INFERENCE_PROFILE}"
 echo "Trigger: ${TRIGGER}"
 echo "Analysis Level: ${ANALYSIS_LEVEL}"
 echo "Max log lines: ${MAX_LOG_LINES}"
@@ -51,7 +53,7 @@ if should_trigger_analysis "${TRIGGER}" "${COMMAND_EXIT_STATUS}"; then
 
   # Perform analysis (disable exit on error temporarily)
   set +e
-  ANALYSIS=$(analyze_build_failure "${MODEL}" "${MAX_LOG_LINES}" "${CUSTOM_PROMPT}" "${TIMEOUT}" "${AGENT_FILE}" "${ANALYSIS_LEVEL}" "${COMPARE_BUILDS}" "${COMPARISON_RANGE}")
+  ANALYSIS=$(analyze_build_failure "${MODEL}" "${INFERENCE_PROFILE}" "${MAX_LOG_LINES}" "${CUSTOM_PROMPT}" "${TIMEOUT}" "${AGENT_FILE}" "${ANALYSIS_LEVEL}" "${COMPARE_BUILDS}" "${COMPARISON_RANGE}")
   ANALYSIS_EXIT_CODE=$?
   set -e
 
@@ -142,6 +144,7 @@ ANNOTATION
 
 **Current Configuration:**
 - Model: ${MODEL}
+- Inference Profile: ${INFERENCE_PROFILE}
 - Trigger: ${TRIGGER}
 - Analysis Level: ${ANALYSIS_LEVEL}
 $([ "${COMPARE_BUILDS}" = "true" ] && echo "- Historical Comparison: Last ${COMPARISON_RANGE} builds")

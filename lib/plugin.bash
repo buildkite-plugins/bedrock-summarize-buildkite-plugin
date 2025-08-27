@@ -91,81 +91,12 @@ function get_build_logs() {
   fi
 }
 
-# Call Claude API for analysis
-function call_claude_api() {
-  local api_key="$1"
-  local model="$2"
-  local prompt="$3"
-  local timeout="${4:-60}"
-
-  local response_file="/tmp/claude_response_${BUILDKITE_BUILD_ID}.json"
-  local debug_file="/tmp/claude_debug_${BUILDKITE_BUILD_ID}.txt"
-
-  echo "--- :robot_face: Analyzing with Claude" >&2
-
-  # For tests, if the response file already exists, use it directly
-  if [ -f "${response_file}" ]; then
-    echo "Using existing response file for testing"
-    return 0
-  fi
-
-  # Check if we can reach the API endpoint
-  if ! curl -s --max-time 5 -o /dev/null https://api.anthropic.com/v1/ping; then
-    echo "Error: Cannot reach Anthropic API. Please check your network connectivity." >&2
-    echo "Error: Network connectivity issue - cannot reach Anthropic API" > "${response_file}"
-    return 1
-  fi
-
-  # Initialize debug file
-  echo "Claude API Debug Log" > "${debug_file}"
-  echo "Timestamp: $(date)" >> "${debug_file}"
-  echo "Model: ${model}" >> "${debug_file}"
-
-  # Prepare the API request
-  local prompt_file="/tmp/claude_prompt_${BUILDKITE_BUILD_ID}.txt"
-  local payload_file="/tmp/claude_payload_${BUILDKITE_BUILD_ID}.json"
-
-  # Write prompt to file
-  echo "$prompt" > "${prompt_file}"
-
-  # Create JSON payload file using jq with rawfile
-  jq -n \
-    --arg model "$model" \
-    --rawfile prompt "${prompt_file}" \
-    '{
-      model: $model,
-      max_tokens: 4000,
-      messages: [
-        {
-          role: "user",
-          content: $prompt
-        }
-      ]
-    }' > "${payload_file}"
-
-  # Make API call silently but log any errors
-  local http_code
-  echo "Calling Claude API..." >&2
-  http_code=$(curl -s -w "%{http_code}" \
-    --max-time "${timeout}" \
-    -H "Content-Type: application/json" \
-    -H "x-api-key: ${api_key}" \
-    -H "anthropic-version: 2023-06-01" \
-    -d "@${payload_file}" \
-    "https://api.anthropic.com/v1/messages" \
-    -o "${response_file}" 2>> "${debug_file}")
-  if [ "${http_code}" -ne 200 ]; then
-    echo "Claude API call failed with HTTP code ${http_code}" >&2
-  fi
-
-  # Return the response file path
-  echo "${response_file}"
-}
-
 # Call AWS Bedrock API for analysis
 function call_bedrock_api() {
-  local prompt="$1"
-  local timeout="${2:-60}"
+  local model="$1"
+  local inference_profile="$2"
+  local prompt="$3"
+  local timeout="${4:-60}"
 
   local response_file="/tmp/claude_bedrock_response_${BUILDKITE_BUILD_ID}.json"
   local debug_file="/tmp/claude_bedrock_debug_${BUILDKITE_BUILD_ID}.txt"
@@ -178,24 +109,19 @@ function call_bedrock_api() {
     return 0
   fi
 
-  # Foundation model ID for access checks
-  local foundation_model_id="anthropic.claude-3-7-sonnet-20250219-v1:0"
-  # Inference profile ID for actual invocation
-  local inference_profile_id="us.anthropic.claude-3-7-sonnet-20250219-v1:0"
-
   # Initialize debug file
   echo "Claude Bedrock API Debug Log" > "${debug_file}"
   echo "Timestamp: $(date)" >> "${debug_file}"
-  echo "Foundation Model: ${foundation_model_id}" >> "${debug_file}"
-  echo "Inference Profile: ${inference_profile_id}" >> "${debug_file}"
+  echo "Foundation Model: ${model}" >> "${debug_file}"
+  echo "Inference Profile: ${inference_profile}" >> "${debug_file}"
 
   # Check if foundation model is accessible in your account
   echo "Verifying Bedrock model access..." >&2
   if ! aws bedrock get-foundation-model \
-    --model-identifier "${foundation_model_id}" \
+    --model-identifier "${model}" \
     --output json > /dev/null 2>> "${debug_file}"; then
 
-    echo "Error: Model ${foundation_model_id} is not accessible in your Bedrock account" >&2
+    echo "Error: Model ${model} is not accessible in your Bedrock account" >&2
     echo "Please check:" >&2
     echo "- Model is enabled in your AWS account via Bedrock console" >&2
     echo "- You have bedrock:GetFoundationModel permission" >&2
@@ -221,7 +147,7 @@ function call_bedrock_api() {
 
   # Make the Bedrock API call using the inference profile
   if aws bedrock-runtime invoke-model \
-    --model-id "$inference_profile_id" \
+    --model-id "$inference_profile" \
     --body "$request_body" \
     --cli-binary-format raw-in-base64-out \
     "$response_file" > /dev/null 2>> "${debug_file}"; then
@@ -530,13 +456,14 @@ function get_agent_context() {
 # Analyze build failure
 function analyze_build_failure() {
   local model="$1"
-  local max_log_lines="$2"
-  local custom_prompt="${3:-}"
-  local timeout="${4:-60}"
-  local agent_file="${5:-false}"
-  local analysis_level="${6:-step}"
-  local compare_builds="${7:-false}"
-  local comparison_range="${8:-5}"
+  local inference_profile="$2"
+  local max_log_lines="$3"
+  local custom_prompt="${4:-}"
+  local timeout="${5:-60}"
+  local agent_file="${6:-false}"
+  local analysis_level="${7:-step}"
+  local compare_builds="${8:-false}"
+  local comparison_range="${9:-5}"
 
   # Get build information
   local build_info="Build: ${BUILDKITE_PIPELINE_SLUG} #${BUILDKITE_BUILD_NUMBER}
@@ -775,7 +702,7 @@ ${custom_prompt}"
 
   # Call Bedrock API
   local response_file
-  if response_file=$(call_bedrock_api "${full_prompt}" "${timeout}"); then
+  if response_file=$(call_bedrock_api "${model}" "${inference_profile}" "${full_prompt}" "${timeout}"); then
     local analysis
     analysis=$(extract_claude_response "${response_file}")
     echo "${analysis}"

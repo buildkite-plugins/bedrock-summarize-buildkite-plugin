@@ -12,8 +12,12 @@ configuration:
       description: Buildkite API token for fetching job logs (optional, will use environment BUILDKITE_API_TOKEN if not specified)
     model:
       type: string
-      description: Claude model to use
-      default: claude-3-7-sonnet-20250219
+      description: Bedrock model to use
+      default: anthropic.claude-3-7-sonnet-20250219-v1:0
+    inference_profile:
+      type: string
+      description: Bedrock inference profile to use (not always required)
+      default: us.anthropic.claude-3-7-sonnet-20250219-v1:0
     trigger:
       type: string
       description: When to trigger AI analysis
