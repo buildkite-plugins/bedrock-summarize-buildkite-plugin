@@ -1,0 +1,56 @@
+name: Bedrock Summarize
+description: AI-powered build analysis and error diagnosis using AWS Bedrock
+author: https://github.com/mcncl
+requirements:
+  - bash
+  - curl
+  - aws
+configuration:
+  properties:
+    buildkite_api_token:
+      type: string
+      description: Buildkite API token for fetching job logs (optional, will use environment BUILDKITE_API_TOKEN if not specified)
+    model:
+      type: string
+      description: Claude model to use
+      default: claude-3-7-sonnet-20250219
+    trigger:
+      type: string
+      description: When to trigger AI analysis
+      enum: ["on-failure", "always", "manual"]
+      default: on-failure
+    analysis_level:
+      type: string
+      description: Level at which to analyze logs - 'step' for current step only, 'build' for all jobs in the build
+      enum: ["step", "build"]
+      default: step
+    max_log_lines:
+      type: integer
+      description: Maximum number of log lines to analyze
+      default: 1000
+    custom_prompt:
+      type: string
+      description: Custom prompt to append to the analysis request
+    timeout:
+      type: integer
+      description: Timeout in seconds for API requests
+      default: 60
+    annotate:
+      type: boolean
+      description: Whether to create build annotations with findings
+      default: true
+    agent_file:
+      type: [boolean, string]
+      description: Include agent context file - true for AGENT.md, false to disable, or string path to custom file
+      default: false
+    compare_builds:
+      type: boolean
+      description: Enable build time comparison analysis
+      default: false
+    comparison_range:
+      type: integer
+      description: Number of previous builds to compare against for build time analysis
+      default: 5
+
+
+  additionalProperties: false
