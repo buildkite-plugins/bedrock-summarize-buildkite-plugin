@@ -783,6 +783,7 @@ ${custom_prompt}"
   else
     echo "Claude Bedrock analysis failed" >&2
     return 1
+  fi
 }
 
 # Check if we should trigger analysis
