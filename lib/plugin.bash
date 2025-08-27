@@ -221,7 +221,7 @@ function call_bedrock_api() {
 
   # Make the Bedrock API call using the inference profile
   if aws bedrock-runtime invoke-model \
-    --model-id "$foundation_model_id" \
+    --model-id "$inference_profile_id" \
     --body "$request_body" \
     --cli-binary-format raw-in-base64-out \
     "$response_file" > /dev/null 2>> "${debug_file}"; then
