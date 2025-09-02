@@ -90,7 +90,7 @@ teardown() {
 
 @test "Plugin respects manual trigger with environment variable" {
   export BUILDKITE_PLUGIN_CLAUDE_CODE_TRIGGER='manual'
-  export CLAUDE_ANALYZE='true'
+  export BEDROCK_ANALYZE='true'
 
   run "$PWD"/hooks/post-command
 

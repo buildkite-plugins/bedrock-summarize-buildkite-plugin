@@ -727,7 +727,7 @@ function should_trigger_analysis() {
       ;;
     "manual")
       # Check for manual trigger (e.g., environment variable or build message)
-      [ "${CLAUDE_ANALYZE:-false}" = "true" ] || [[ "${BUILDKITE_MESSAGE:-}" == *"[claude-analyze]"* ]]
+      [ "${BEDROCK_ANALYZE:-false}" = "true" ] || [[ "${BUILDKITE_MESSAGE:-}" == *"[bedrock-analyze]"* ]]
       ;;
     *)
       echo "Unknown trigger: ${trigger}"
