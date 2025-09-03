@@ -31,7 +31,7 @@ function validate_configuration() {
 
   # List available Bedrock inference profiles
   while IFS= read -r line; do
-      bedrock_models+=("$line")
+      inference_profiles+=("$line")
   done < <(aws --query "inferenceProfileSummaries[*].inferenceProfileId" bedrock list-inference-profiles --output yaml | sed 's/^- //')
 
   # Check if the requested inference profile is valid
