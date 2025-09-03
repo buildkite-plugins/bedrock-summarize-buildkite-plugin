@@ -13,9 +13,16 @@ function validate_configuration() {
   local errors=0
   
   # Validate model format
-  if [[ ! "${model}" =~ ^claude- ]]; then
-    echo "❌ Error: model must be a valid Claude model starting with 'claude-'" >&2
-    errors=$((errors + 1))
+  bedrock_models=()
+
+  # List available Bedrock models
+  while IFS= read -r line; do
+      bedrock_models+=("$line")
+  done < <(aws --query "modelSummaries[*].modelId" bedrock list-foundation-models --output yaml | sed 's/^- //')
+
+  # Check if the variable exists in the array
+  if [[ ! " ${bedrock_models[@]} " =~ " ${model} " ]]; then
+      echo "❌ Error: $model is not valid Bedrock model."
   fi
   
   # Validate trigger
@@ -65,6 +72,12 @@ function validate_tools() {
   # Check for aws
   if ! command -v aws >/dev/null 2>&1; then
     echo "❌ Error: aws is required but not installed" >&2
+    errors=$((errors + 1))
+  fi
+
+  # Validate AWS access
+  if ! aws sts get-caller-identity; then
+    echo "❌ Error: AWS access not configured!" >&2
     errors=$((errors + 1))
   fi
   
