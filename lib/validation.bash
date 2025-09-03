@@ -5,14 +5,15 @@ set -euo pipefail
 # Returns 0 if validation passes, non-zero if validation fails
 function validate_configuration() {
   local model="$1"
-  local trigger="$2"
-  local analysis_level="$3"
-  local compare_builds="$4"
-  local buildkite_api_token="$5"
+  local inference_profile="$2"
+  local trigger="$3"
+  local analysis_level="$4"
+  local compare_builds="$5"
+  local buildkite_api_token="$6"
   
   local errors=0
   
-  # Validate model format
+  # Validate model
   bedrock_models=()
 
   # List available Bedrock models
@@ -20,9 +21,22 @@ function validate_configuration() {
       bedrock_models+=("$line")
   done < <(aws --query "modelSummaries[*].modelId" bedrock list-foundation-models --output yaml | sed 's/^- //')
 
-  # Check if the variable exists in the array
+  # Check if the requested model is valid
   if [[ ! " ${bedrock_models[@]} " =~ " ${model} " ]]; then
       echo "❌ Error: $model is not valid Bedrock model."
+  fi
+  
+  # Validate inference profile
+  inference_profiles=()
+
+  # List available Bedrock inference profiles
+  while IFS= read -r line; do
+      bedrock_models+=("$line")
+  done < <(aws --query "inferenceProfileSummaries[*].inferenceProfileId" bedrock list-inference-profiles --output yaml | sed 's/^- //')
+
+  # Check if the requested inference profile is valid
+  if [[ ! " ${inference_profiles[@]} " =~ " ${inference_profile} " ]]; then
+      echo "❌ Error: $inference_profile is not valid Bedrock inference profile."
   fi
   
   # Validate trigger
@@ -76,7 +90,7 @@ function validate_tools() {
   fi
 
   # Validate AWS access
-  if ! aws sts get-caller-identity; then
+  if ! aws sts get-caller-identity 2>&1; then
     echo "❌ Error: AWS access not configured!" >&2
     errors=$((errors + 1))
   fi
