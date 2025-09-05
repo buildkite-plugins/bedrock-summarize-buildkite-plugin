@@ -157,8 +157,7 @@ function call_bedrock_api() {
     echo "Bedrock API call successful" >> "${debug_file}"
   else
     echo "Error: Bedrock API call failed" >&2
-    cat $debug_file
-#    echo "Check debug file for details: ${debug_file}" >&2
+    echo "Check debug file for details: ${debug_file}" >&2
     echo "Bedrock API call failed" >> "${debug_file}"
     return 1
   fi

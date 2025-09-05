@@ -24,6 +24,7 @@ function validate_configuration() {
   # Check if the requested model is valid
   if [[ ! " ${bedrock_models[*]} " == *" ${model} "* ]]; then
       echo "❌ Error: $model is not valid Bedrock model."
+      errors=$((errors + 1))
   fi
   
   # Validate inference profile
@@ -37,6 +38,7 @@ function validate_configuration() {
   # Check if the requested inference profile is valid
   if [[ ! " ${inference_profiles[*]} " == *" ${inference_profile} "* ]]; then
       echo "❌ Error: $inference_profile is not valid Bedrock inference profile."
+      errors=$((errors + 1))
   fi
   
   # Validate trigger
