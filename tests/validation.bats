@@ -16,7 +16,7 @@ setup() {
         # Return mock Bedrock models in the format expected by sed 's/^- //'
         cat << 'EOF'
 - anthropic.claude-3-5-sonnet-20241022-v2:0
-- anthropic.claude-3-sonnet-20240229-v1:0  
+- anthropic.claude-3-sonnet-20240229-v1:0
 - anthropic.claude-3-haiku-20240307-v1:0
 - amazon.titan-text-express-v1
 EOF
@@ -55,7 +55,7 @@ EOF
 @test "Validate configuration fails with invalid model" {
   run validate_configuration "invalid-model" "us.anthropic.claude-3-sonnet-20240229-v1:0" "on-failure" "step" "false" ""
 
-  assert_failure  # Function should return error code now  
+  assert_failure  # Function should return error code now
   assert_output --partial "Error: invalid-model is not valid Bedrock model"
 }
 
@@ -125,7 +125,7 @@ EOF
 
 @test "Validate tools fails when jq is missing" {
   # Mock commands
-  # shellcheck disable=SC2317
+  # shellcheck disable=SC2317,SC2329
   command() {
     if [[ "$*" == *"jq"* ]]; then
       return 1
