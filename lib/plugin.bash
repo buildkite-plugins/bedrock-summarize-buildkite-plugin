@@ -110,10 +110,12 @@ function call_bedrock_api() {
   fi
 
   # Initialize debug file
-  echo "Claude Bedrock API Debug Log" > "${debug_file}"
-  echo "Timestamp: $(date)" >> "${debug_file}"
-  echo "Foundation Model: ${model}" >> "${debug_file}"
-  echo "Inference Profile: ${inference_profile}" >> "${debug_file}"
+  {
+    echo "Claude Bedrock API Debug Log"
+    echo "Timestamp: $(date)"
+    echo "Foundation Model: ${model}"
+    echo "Inference Profile: ${inference_profile}"
+  } > "${debug_file}"
 
   # Check if foundation model is accessible in your account
   echo "Verifying Bedrock model access..." >&2
