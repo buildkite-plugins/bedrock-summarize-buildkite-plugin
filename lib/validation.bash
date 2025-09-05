@@ -22,7 +22,7 @@ function validate_configuration() {
   done < <(aws --query "modelSummaries[*].modelId" bedrock list-foundation-models --output yaml | sed 's/^- //')
 
   # Check if the requested model is valid
-  if [[ ! " ${bedrock_models[@]} " =~ " ${model} " ]]; then
+  if [[ ! " ${bedrock_models[*]} " =~ " ${model} " ]]; then
       echo "❌ Error: $model is not valid Bedrock model."
   fi
   
@@ -35,7 +35,7 @@ function validate_configuration() {
   done < <(aws --query "inferenceProfileSummaries[*].inferenceProfileId" bedrock list-inference-profiles --output yaml | sed 's/^- //')
 
   # Check if the requested inference profile is valid
-  if [[ ! " ${inference_profiles[@]} " =~ " ${inference_profile} " ]]; then
+  if [[ ! " ${inference_profiles[*]} " =~ " ${inference_profile} " ]]; then
       echo "❌ Error: $inference_profile is not valid Bedrock inference profile."
   fi
   
@@ -87,13 +87,13 @@ function validate_tools() {
   if ! command -v aws >/dev/null 2>&1; then
     echo "❌ Error: aws is required but not installed" >&2
     errors=$((errors + 1))
+  else
+    # Validate AWS access
+    if ! aws sts get-caller-identity 2>&1; then
+      echo "❌ Error: AWS access not configured!" >&2
+      errors=$((errors + 1))
+    fi
   fi
 
-  # Validate AWS access
-  if ! aws sts get-caller-identity 2>&1; then
-    echo "❌ Error: AWS access not configured!" >&2
-    errors=$((errors + 1))
-  fi
-  
   return ${errors}
 }
