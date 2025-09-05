@@ -22,7 +22,7 @@ function validate_configuration() {
   done < <(aws --query "modelSummaries[*].modelId" bedrock list-foundation-models --output yaml | sed 's/^- //')
 
   # Check if the requested model is valid
-  if [[ ! " ${bedrock_models[*]} " =~ " ${model} " ]]; then
+  if [[ ! " ${bedrock_models[*]} " == *" ${model} "* ]]; then
       echo "❌ Error: $model is not valid Bedrock model."
   fi
   
@@ -35,7 +35,7 @@ function validate_configuration() {
   done < <(aws --query "inferenceProfileSummaries[*].inferenceProfileId" bedrock list-inference-profiles --output yaml | sed 's/^- //')
 
   # Check if the requested inference profile is valid
-  if [[ ! " ${inference_profiles[*]} " =~ " ${inference_profile} " ]]; then
+  if [[ ! " ${inference_profiles[*]} " == *" ${inference_profile} "* ]]; then
       echo "❌ Error: $inference_profile is not valid Bedrock inference profile."
   fi
   
