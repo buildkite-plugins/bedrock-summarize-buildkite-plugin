@@ -14,12 +14,12 @@ AI-powered build analysis and error diagnosis using Large Language Models (LLMs)
 
 - **curl**: For API requests
 - **jq**: For JSON processing
-- **AWS CLI**: Must be installed on agents and set up with access to AWS Bedrock
+- **AWS CLI**: Must be installed on agents and set up with access to AWS Bedrock (`AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` environment variables set for your account)
 - **Bedrock**: Your AWS account needs access to Amazon Bedrock, and your desired model(s) must be enabled
 
 ## Quick Start
 
-1. Add the plugin to your pipeline like this:
+Add the plugin to your pipeline like this:
 
 ```yaml
 steps:
@@ -27,6 +27,18 @@ steps:
     command: "npm test"
     plugins:
       - bedrock-summarize#v1.0.0: ~
+```
+
+If your Buildkite agents are running in AWS, you could consider using the [OIDC Assume Role plugin](https://buildkite.com/resources/plugins/buildkite-plugins/aws-assume-role-with-web-identity-buildkite-plugin/) in conjunction with Bedrock Summarize. After creating an IAM role in AWS that has permission to use Bedrock, a configuration like this will allow your agent to assume that role when it uses the plugin:
+
+```yaml
+steps:
+  - label: "🧪 Run tests"
+    command: "npm test"
+    plugins:
+      - bedrock-summarize#v1.0.0: ~
+      - aws-assume-role-with-web-identity#v1.4.0:
+          role-arn: arn:aws:iam::12345:role/bedrock-access
 ```
 
 ## Configuration Options
@@ -103,7 +115,7 @@ steps:
   - label: "🧪 Run tests"
     command: "npm test"
     plugins:
-      - bedrock-summarize#v1.0.0
+      - bedrock-summarize#v1.0.0: ~
 ```
 
 When tests fail, the LLM will analyze the output and create an annotation with:
