@@ -26,7 +26,7 @@ steps:
   - label: "🧪 Run tests"
     command: "npm test"
     plugins:
-      - bedrock-summarize#v1.0.0
+      - bedrock-summarize#v1.0.0: ~
 ```
 
 ## Configuration Options
