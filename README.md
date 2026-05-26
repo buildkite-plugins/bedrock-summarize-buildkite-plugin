@@ -37,7 +37,7 @@ steps:
     command: "npm test"
     plugins:
       - bedrock-summarize#v1.0.0: ~
-      - aws-assume-role-with-web-identity#v1.4.0:
+      - aws-assume-role-with-web-identity#v1.6.0:
           role-arn: arn:aws:iam::12345:role/bedrock-access
 ```
 
