@@ -43,6 +43,15 @@ configuration:
       type: boolean
       description: Whether to create build annotations with findings
       default: true
+    annotation_scope:
+      type: string
+      description: Whether the annotation is shared by every job in the build, or unique to each job
+      enum: ["build", "job"]
+      default: build
+    allow_multiple_annotations:
+      type: boolean
+      description: Create a new annotation on each run instead of replacing the previous one
+      default: false
     agent_file:
       type: [boolean, string]
       description: Include agent context file - true for AGENT.md, false to disable, or string path to custom file
