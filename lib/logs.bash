@@ -60,7 +60,7 @@ function get_build_logs_internal() {
 
   # First, get the build to find all jobs
   local build_url="https://api.buildkite.com/v2/organizations/${BUILDKITE_ORGANIZATION_SLUG}/pipelines/${BUILDKITE_PIPELINE_SLUG}/builds/${BUILDKITE_BUILD_NUMBER}"
-  local build_data_file="/tmp/build_${BUILDKITE_BUILD_ID}.json"
+  local build_data_file="/tmp/build_${BUILDKITE_JOB_ID:-${BUILDKITE_BUILD_ID}}.json"
 
   if curl -s -f -H "Authorization: Bearer ${api_token}" "${build_url}" > "${build_data_file}" 2>/dev/null; then
     # Extract job IDs from the build
@@ -256,9 +256,10 @@ function fetch_build_logs() {
     return 1
   fi
 
-  # Ensure we have a valid build ID for the temp file
-  local build_id="${BUILDKITE_BUILD_ID:-unknown}"
-  local log_file="/tmp/buildkite_logs_${build_id}.txt"
+  # Keyed by job so concurrent jobs on one agent host don't overwrite each
+  # other's logs, falling back to the build when there is no job
+  local log_id="${BUILDKITE_JOB_ID:-${BUILDKITE_BUILD_ID:-unknown}}"
+  local log_file="/tmp/buildkite_logs_${log_id}.txt"
 
   # Ensure log file can be created
   if ! touch "${log_file}" 2>/dev/null; then
