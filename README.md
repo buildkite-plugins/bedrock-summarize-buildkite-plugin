@@ -88,6 +88,23 @@ Timeout in seconds for Bedrock API requests. Default: `60`
 
 Whether to create Buildkite annotations with the analysis results. Default: `true`
 
+#### `annotation_scope` (string)
+
+Where the annotation is attached, matching the `--scope` option of `buildkite-agent annotate`. Options: `build`, `job`. Default: `build`
+
+- `build`: Every job running the plugin shares one annotation at the top of the build, so the last job to finish replaces the analysis from the jobs before it
+- `job`: Each job gets its own annotation, shown against that job, so a build running the plugin on several steps keeps an analysis for each of them
+
+The annotation context follows the scope, keyed on the build id at build scope and the job id at job scope, so the analysis from one run replaces only the analysis it supersedes.
+
+Job scope requires Buildkite agent v3.112.0 or newer. The plugin sets the scope through the `BUILDKITE_ANNOTATION_SCOPE` environment variable rather than the `--scope` flag, so older agents keep working and fall back to build scope instead of failing.
+
+#### `allow_multiple_annotations` (boolean)
+
+Create a new annotation on each run instead of replacing the previous one. Default: `false`
+
+Annotations replace each other when they share a context. Setting this to `true` adds a random suffix to the context, so every run gets an annotation of its own and nothing is overwritten. Useful when a job runs the plugin more than once, or when you want to keep the analysis from each retry.
+
 #### `agent_file` (boolean or string)
 
 Include project context from an agent file in the analysis. Default: `false`
@@ -138,6 +155,25 @@ steps:
 ```
 
 With `analysis_level: "build"`, the LLM will analyze logs from all jobs in the build, providing insights across the entire pipeline.
+
+### An Annotation per Step
+
+```yaml
+steps:
+  - label: "🧪 Run tests"
+    command: "npm test"
+    plugins:
+      - bedrock-summarize#v1.0.0:
+          annotation_scope: "job"
+
+  - label: "🏗️ Build application"
+    command: "npm run build"
+    plugins:
+      - bedrock-summarize#v1.0.0:
+          annotation_scope: "job"
+```
+
+Both steps keep their own analysis instead of the second one replacing the first. Use `allow_multiple_annotations: true` as well if a single step runs the plugin more than once and you want to keep every result.
 
 ### Always Analyze Builds
 

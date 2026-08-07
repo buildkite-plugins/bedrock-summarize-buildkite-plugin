@@ -98,14 +98,15 @@ function call_bedrock_api() {
   local prompt="$3"
   local timeout="${4:-60}"
 
-  local response_file="/tmp/claude_bedrock_response_${BUILDKITE_BUILD_ID}.json"
-  local debug_file="/tmp/claude_bedrock_debug_${BUILDKITE_BUILD_ID}.txt"
+  local invocation="${BUILDKITE_JOB_ID:-${BUILDKITE_BUILD_ID}}_$$"
+  local response_file="/tmp/claude_bedrock_response_${invocation}.json"
+  local debug_file="/tmp/claude_bedrock_debug_${invocation}.txt"
 
   echo "--- :robot_face: Analyzing with Claude via AWS Bedrock" >&2
 
-  # For tests, if the response file already exists, use it directly
-  if [ -f "${response_file}" ]; then
-    echo "Using existing response file for testing"
+  # Tests seed a canned response rather than calling Bedrock
+  if [[ -n "${BATS_TEST_FILENAME:-}" || -n "${BUILDKITE_PLUGIN_TESTER:-}" ]] && [ -f "${response_file}" ]; then
+    echo "${response_file}"
     return 0
   fi
 
@@ -209,12 +210,34 @@ function extract_claude_response() {
   fi
 }
 
+# Build the context key used to identify an annotation.
+#
+function annotation_context() {
+  local scope="${1:-build}"
+  local allow_multiple="${2:-false}"
+  local context
+
+  if [ "${scope}" = "job" ] && [ -n "${BUILDKITE_JOB_ID:-}" ]; then
+    context="claude-analysis-${BUILDKITE_JOB_ID}"
+  else
+    context="claude-analysis-${BUILDKITE_BUILD_ID}"
+  fi
+
+  if [ "${allow_multiple}" = "true" ]; then
+    context="${context}-$(printf '%04x%04x' "${RANDOM}" "${RANDOM}")"
+  fi
+
+  echo "${context}"
+}
+
 # Create Buildkite annotation
 function create_annotation() {
   # shellcheck disable=SC2034
   local title="$1"
   local content="$2"
   local style="${3:-info}"
+  local context="${4:-claude-analysis-${BUILDKITE_BUILD_ID}}"
+  local scope="${5:-build}"
   local annotation_file
 
   echo "--- :memo: Creating annotation"
@@ -225,14 +248,14 @@ function create_annotation() {
     annotation_file="${content}"
   else
     # Create a temporary file with the content
-    annotation_file="/tmp/claude_annotation_${BUILDKITE_BUILD_ID}.md"
+    annotation_file="/tmp/claude_annotation_${BUILDKITE_JOB_ID:-${BUILDKITE_BUILD_ID}}.md"
     echo "${content}" > "${annotation_file}"
   fi
 
   # Create annotation by cat-ing the file to buildkite-agent annotate
-  buildkite-agent annotate \
+  BUILDKITE_ANNOTATION_SCOPE="${scope}" buildkite-agent annotate \
     --style "${style}" \
-    --context "claude-analysis-${BUILDKITE_BUILD_ID}" \
+    --context "${context}" \
     < "${annotation_file}"
 }
 

@@ -10,7 +10,8 @@ function validate_configuration() {
   local analysis_level="$4"
   local compare_builds="$5"
   local buildkite_api_token="$6"
-  
+  local annotation_scope="${7:-build}"
+
   local errors=0
   
   # Validate model
@@ -53,6 +54,12 @@ function validate_configuration() {
     errors=$((errors + 1))
   fi
   
+  # Validate annotation_scope
+  if [[ ! "${annotation_scope}" =~ ^(build|job)$ ]]; then
+    echo "❌ Error: annotation_scope must be one of: build, job. Got: ${annotation_scope}" >&2
+    errors=$((errors + 1))
+  fi
+
   # Check for Buildkite API token when build level analysis is requested
   if [ "${analysis_level}" = "build" ] && [ "${buildkite_api_token}" = "" ] && [ -z "${BUILDKITE_API_TOKEN:-}" ]; then
     echo "⚠️ Warning: build-level analysis works best with a Buildkite API token" >&2
