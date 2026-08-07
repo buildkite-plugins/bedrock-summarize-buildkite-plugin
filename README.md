@@ -26,7 +26,7 @@ steps:
   - label: "🧪 Run tests"
     command: "npm test"
     plugins:
-      - bedrock-summarize#v1.0.0: ~
+      - bedrock-summarize#v1.1.0: ~
 ```
 
 If your Buildkite agents are running in AWS, you could consider using the [OIDC Assume Role plugin](https://buildkite.com/resources/plugins/buildkite-plugins/aws-assume-role-with-web-identity-buildkite-plugin/) in conjunction with Bedrock Summarize. After creating an IAM role in AWS that has permission to use Bedrock, a configuration like this will allow your agent to assume that role when it uses the plugin:
@@ -36,7 +36,7 @@ steps:
   - label: "🧪 Run tests"
     command: "npm test"
     plugins:
-      - bedrock-summarize#v1.0.0: ~
+      - bedrock-summarize#v1.1.0: ~
       - aws-assume-role-with-web-identity#v1.6.0:
           role-arn: arn:aws:iam::12345:role/bedrock-access
 ```
@@ -132,7 +132,7 @@ steps:
   - label: "🧪 Run tests"
     command: "npm test"
     plugins:
-      - bedrock-summarize#v1.0.0: ~
+      - bedrock-summarize#v1.1.0: ~
 ```
 
 When tests fail, the LLM will analyze the output and create an annotation with:
@@ -148,7 +148,7 @@ steps:
   - label: "🔍 Analyze entire build"
     command: "npm test"
     plugins:
-      - bedrock-summarize#v1.0.0:
+      - bedrock-summarize#v1.1.0:
           buildkite_api_token: "$$BUILDKITE_API_TOKEN"
           analysis_level: "build"
           trigger: "always"
@@ -163,13 +163,13 @@ steps:
   - label: "🧪 Run tests"
     command: "npm test"
     plugins:
-      - bedrock-summarize#v1.0.0:
+      - bedrock-summarize#v1.1.0:
           annotation_scope: "job"
 
   - label: "🏗️ Build application"
     command: "npm run build"
     plugins:
-      - bedrock-summarize#v1.0.0:
+      - bedrock-summarize#v1.1.0:
           annotation_scope: "job"
 ```
 
@@ -182,7 +182,7 @@ steps:
   - label: "🏗️ Build application"
     command: "npm run build"
     plugins:
-      - bedrock-summarize#v1.0.0:
+      - bedrock-summarize#v1.1.0:
           trigger: "always"
           custom_prompt: "Focus on build performance and optimization opportunities"
 ```
@@ -196,7 +196,7 @@ steps:
     env:
       BEDROCK_ANALYZE: "true"  # Trigger manual analysis
     plugins:
-      - bedrock-summarize#v1.0.0:
+      - bedrock-summarize#v1.1.0:
           trigger: "manual"
           custom_prompt: "This is a deployment script. Focus on infrastructure and configuration issues."
           max_log_lines: 2000
@@ -209,7 +209,7 @@ steps:
   - label: "🏗️ Build with performance tracking"
     command: "npm run build"
     plugins:
-      - bedrock-summarize#v1.0.0:
+      - bedrock-summarize#v1.1.0:
           compare_builds: true
           comparison_range: 10
           custom_prompt: "Focus on build performance trends and identify any performance regressions"
@@ -228,19 +228,19 @@ steps:
   - label: "🔍 Lint code"
     command: "npm run lint"
     plugins:
-      - bedrock-summarize#v1.0.0:
+      - bedrock-summarize#v1.1.0:
           custom_prompt: "Focus on code quality and style issues"
 
   - label: "🧪 Run tests"
     command: "npm test"
     plugins:
-      - bedrock-summarize#v1.0.0:
+      - bedrock-summarize#v1.1.0:
           custom_prompt: "Focus on test failures and coverage issues"
 
   - label: "🏗️ Build production"
     command: "npm run build:prod"
     plugins:
-      - bedrock-summarize#v1.0.0:
+      - bedrock-summarize#v1.1.0:
           trigger: "always"
           custom_prompt: "Focus on build optimization and bundle analysis"
 ```
