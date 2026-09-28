@@ -1,0 +1,173 @@
+#!/usr/bin/env bats
+
+# shellcheck disable=SC2030,SC2031,SC2016 # Bats subshells and literal Markdown fixtures
+
+setup() {
+  load "${BATS_PLUGIN_PATH}/load.bash"
+  source "$PWD/lib/plugin.bash"
+  export BUILDKITE_BUILD_ID="bedrock-test-${BATS_TEST_NUMBER}-$$"
+  export BUILDKITE_JOB_ID="$BUILDKITE_BUILD_ID"
+  export BUILDKITE_PIPELINE_SLUG="test-pipeline"
+  export BUILDKITE_ORGANIZATION_SLUG="test-org"
+  export BUILDKITE_BUILD_NUMBER=42
+  export BUILDKITE_COMMAND_EXIT_STATUS=1
+  export BUILDKITE_API_TOKEN="test-token"
+  export TMPDIR="$BATS_TEST_TMPDIR/tmp"
+  mkdir -p "$BATS_TEST_TMPDIR/bin" "$TMPDIR"
+  export PATH="$BATS_TEST_TMPDIR/bin:$PATH"
+  printf '%s\n' 'failed command output' > "$BATS_TEST_TMPDIR/logs"
+  printf '%s\n' '{"content":[{"type":"text","text":"# Analysis\n\nCheck `config`."}]}' > "$BATS_TEST_TMPDIR/response"
+
+  # An executable (not a shell function) catches payloads passed through argv.
+  cat > "$BATS_TEST_TMPDIR/bin/aws" <<'AWS'
+#!/bin/bash
+set -euo pipefail
+case "$*" in
+  *list-foundation-models*) echo '- anthropic.claude-3-7-sonnet-20250219-v1:0' ;;
+  *list-inference-profiles*) echo '- us.anthropic.claude-3-7-sonnet-20250219-v1:0' ;;
+  *get-caller-identity*|*get-foundation-model*) echo '{}' ;;
+  *invoke-model*)
+    touch "$BATS_TEST_TMPDIR/invoked"
+    response="${@: -1}"
+    while [ "$1" != --body ]; do shift; done
+    body="$2"
+    [[ "$body" == fileb://* ]]
+    request="${body#fileb://}"
+    printf '%s' "$request" > "$BATS_TEST_TMPDIR/request-path"
+    [ "$(stat -c %a "$request")" = 600 ]
+    cp "$request" "$BATS_TEST_TMPDIR/request"
+    if [ "${FAIL_AWS:-false}" = true ]; then exit 1; fi
+    cp "$BATS_TEST_TMPDIR/response" "$response"
+    ;;
+  *) exit 1 ;;
+esac
+AWS
+  cat > "$BATS_TEST_TMPDIR/bin/curl" <<'CURL'
+#!/bin/bash
+case "${@: -1}" in
+  */log) jq -Rs '{content: .}' < "$BATS_TEST_TMPDIR/logs" ;;
+  *) echo '{}' ;;
+esac
+CURL
+  cat > "$BATS_TEST_TMPDIR/bin/buildkite-agent" <<'AGENT'
+#!/bin/bash
+printf '%s\n' "$*" >> "$BATS_TEST_TMPDIR/annotation-calls"
+cat > "$BATS_TEST_TMPDIR/annotation"
+AGENT
+  chmod +x "$BATS_TEST_TMPDIR/bin/"*
+}
+
+teardown() {
+  rm -f /tmp/claude_bedrock_{response,debug}_"${BUILDKITE_JOB_ID}"_* \
+    "/tmp/buildkite_logs_${BUILDKITE_JOB_ID}.txt" \
+    "/tmp/ai_success_${BUILDKITE_JOB_ID}.md" \
+    "/tmp/ai_error_${BUILDKITE_JOB_ID}.md"
+}
+
+@test "Extracts every text block, preserving Markdown and excluding non-text blocks" {
+  cat > "$BATS_TEST_TMPDIR/response" <<'JSON'
+{"content":[{"type":"thinking","thinking":"private","signature":"secret"},{"type":"text","text":"# Analysis\n\n`code` and **bold**"},{"type":"redacted_thinking","data":"hidden"},{"type":"tool_use","text":"not analysis"},{"type":"text","text":"| A | B |\n|---|---|\n| 1 | 2 |"}]}
+JSON
+  run extract_claude_response "$BATS_TEST_TMPDIR/response"
+  assert_success
+  assert_output $'# Analysis\n\n`code` and **bold**\n\n| A | B |\n|---|---|\n| 1 | 2 |'
+}
+
+@test "Preserves legacy string responses" {
+  for response in '{"completion":"Legacy answer"}' '{"content":"Legacy answer"}'; do
+    printf '%s' "$response" > "$BATS_TEST_TMPDIR/response"
+    run extract_claude_response "$BATS_TEST_TMPDIR/response"
+    assert_success
+    assert_output 'Legacy answer'
+  done
+}
+
+@test "Rejects malformed, missing, and non-text responses" {
+  for response in 'not JSON' '{}' '{"content":[{"type":"thinking","signature":"secret"}]}' \
+    '{"content":[{"type":"text","text":"  \n"}]}' '{"content":{"text":"wrong shape"}}'; do
+    printf '%s' "$response" > "$BATS_TEST_TMPDIR/response"
+    run extract_claude_response "$BATS_TEST_TMPDIR/response"
+    assert_failure
+    assert_output --partial 'Error:'
+    refute_output --partial 'secret'
+  done
+  run extract_claude_response "$BATS_TEST_TMPDIR/missing"
+  assert_failure
+  assert_output --partial 'Error:'
+}
+
+@test "Large prompts cross both jq and AWS boundaries without truncation" {
+  head -c 160000 /dev/zero | tr '\0' x > "$BATS_TEST_TMPDIR/prompt"
+  printf '\nLast failure: "quoted" \\ path\t日本語\nend' >> "$BATS_TEST_TMPDIR/prompt"
+  run call_bedrock_api model profile "$(cat "$BATS_TEST_TMPDIR/prompt")"
+  assert_success
+  jq -j '.messages[0].content' "$BATS_TEST_TMPDIR/request" > "$BATS_TEST_TMPDIR/actual"
+  cmp "$BATS_TEST_TMPDIR/prompt" "$BATS_TEST_TMPDIR/actual"
+  [ ! -e "$(cat "$BATS_TEST_TMPDIR/request-path")" ]
+}
+
+@test "JSON escaping cannot overflow the AWS argument limit" {
+  head -c 80000 /dev/zero | tr '\0' '"' > "$BATS_TEST_TMPDIR/prompt"
+  run call_bedrock_api model profile "$(cat "$BATS_TEST_TMPDIR/prompt")"
+  assert_success
+  jq -j '.messages[0].content' "$BATS_TEST_TMPDIR/request" > "$BATS_TEST_TMPDIR/actual"
+  cmp "$BATS_TEST_TMPDIR/prompt" "$BATS_TEST_TMPDIR/actual"
+  [ ! -e "$(cat "$BATS_TEST_TMPDIR/request-path")" ]
+}
+
+@test "Request construction failure stops before invoking Bedrock and cleans up" {
+  printf '#!/bin/sh\nexit 1\n' > "$BATS_TEST_TMPDIR/bin/jq"
+  chmod +x "$BATS_TEST_TMPDIR/bin/jq"
+  run call_bedrock_api model profile prompt
+  assert_failure
+  assert_output --partial 'Error: Failed to prepare Bedrock request'
+  [ ! -e "$BATS_TEST_TMPDIR/invoked" ]
+  [ -z "$(ls -A "$TMPDIR")" ]
+}
+
+@test "Bedrock failure cleans up the private request file" {
+  export FAIL_AWS=true
+  run call_bedrock_api model profile prompt
+  assert_failure
+  assert_output --partial 'Error: Bedrock API call failed'
+  [ -s "$BATS_TEST_TMPDIR/request-path" ]
+  [ ! -e "$(cat "$BATS_TEST_TMPDIR/request-path")" ]
+}
+
+@test "Hook annotates extracted Markdown through the real large-log analysis path" {
+  head -c 160000 /dev/zero | tr '\0' x > "$BATS_TEST_TMPDIR/logs"
+  printf '\nFAILURE AT END\n' >> "$BATS_TEST_TMPDIR/logs"
+  printf '%s\n' '{"content":[{"type":"thinking","signature":"secret"},{"type":"text","text":"# Analysis\n\nCheck `config`."}]}' > "$BATS_TEST_TMPDIR/response"
+  run "$PWD/hooks/post-command"
+  assert_success
+  assert_output --partial 'AI Analysis Complete'
+  grep -F '# Analysis' "$BATS_TEST_TMPDIR/annotation"
+  grep -F 'Check `config`.' "$BATS_TEST_TMPDIR/annotation"
+  run grep -E 'signature|secret|"type"' "$BATS_TEST_TMPDIR/annotation"
+  assert_failure 1
+  jq -e --rawfile logs "$BATS_TEST_TMPDIR/logs" \
+    '.messages[0].content | contains($logs | rtrimstr("\n"))' "$BATS_TEST_TMPDIR/request"
+  [ "$(wc -l < "$BATS_TEST_TMPDIR/annotation-calls")" -eq 1 ]
+}
+
+@test "Hook reports API and parse failures without a success annotation or failing the job" {
+  for failure in api parse; do
+    rm -f "$BATS_TEST_TMPDIR/annotation-calls"
+    if [ "$failure" = api ]; then
+      export FAIL_AWS=true
+    else
+      export FAIL_AWS=false
+      printf '%s\n' '{"content":[{"type":"thinking","signature":"secret"}]}' > "$BATS_TEST_TMPDIR/response"
+    fi
+    run "$PWD/hooks/post-command"
+    assert_success
+    assert_output --partial 'AI analysis failed'
+    refute_output --partial 'Analysis completed'
+    refute_output --partial 'AI Analysis Complete'
+    grep -F 'AI Analysis Failed' "$BATS_TEST_TMPDIR/annotation"
+    grep -F -- '--style warning' "$BATS_TEST_TMPDIR/annotation-calls"
+    [ "$(wc -l < "$BATS_TEST_TMPDIR/annotation-calls")" -eq 1 ]
+    run grep -F 'secret' "$BATS_TEST_TMPDIR/annotation"
+    assert_failure 1
+  done
+}

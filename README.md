@@ -76,6 +76,8 @@ Level at which to analyze logs. Options: `step`, `build`. These require `buildki
 
 Maximum number of log lines to send to the LLM for analysis. Default: `1000`
 
+Requests are passed to the AWS CLI through a temporary file, so large log lines do not hit shell argument-size limits (`ARG_MAX`). This does not bypass Bedrock request-size or model context/token limits. If Bedrock rejects an oversized input, reduce `max_log_lines` or the additional context in `custom_prompt`; the plugin does not automatically trim to a model's token limit.
+
 #### `custom_prompt` (string)
 
 Additional context or instructions to include in the analysis prompt.
@@ -260,6 +262,8 @@ Run tests with
 ```bash
 docker compose run --rm tests
 ```
+
+Tests use real `jq` and mocked AWS/Buildkite commands; no cloud credentials are needed.
 
 ## 👩‍💻 Contributing
 

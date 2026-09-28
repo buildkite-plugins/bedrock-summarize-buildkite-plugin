@@ -64,7 +64,7 @@ if should_trigger_analysis "${TRIGGER}" "${COMMAND_EXIT_STATUS}"; then
   ANALYSIS_EXIT_CODE=$?
   set -e
 
-  if [ ${ANALYSIS_EXIT_CODE} -eq 0 ]; then
+  if [ ${ANALYSIS_EXIT_CODE} -eq 0 ] && [ -n "${ANALYSIS}" ]; then
     echo "--- :white_check_mark: Analysis completed"
 
     # Create annotation if enabled
@@ -126,8 +126,6 @@ ANNOTATION
       create_annotation "${annotation_title}" "${formatted_analysis}" "${annotation_style}" "${ANNOTATION_CONTEXT}" "${ANNOTATION_SCOPE}"
     fi
 
-  # Check if analysis was successful
-  if [ -n "${ANALYSIS}" ] && [[ ! "${ANALYSIS}" =~ ^Error: ]]; then
     if [ "${ANNOTATE}" = "true" ]; then
       echo "--- :brain: AI Analysis Complete (See Annotation)"
     else
@@ -143,7 +141,7 @@ ANNOTATION
       cat > "${error_file}" << ERROR
 ## ⚠️ AI Analysis Failed
 
-**Error:** ${ANALYSIS}
+**Error:** AI analysis could not be completed. See the job logs for details.
 
 ---
 
@@ -174,7 +172,6 @@ ERROR
       error_annotation="${error_file}"
       create_annotation "AI Analysis Failed" "${error_annotation}" "warning" "${ANNOTATION_CONTEXT}" "${ANNOTATION_SCOPE}"
     fi
-  fi
   fi
 else
   echo "--- :zzz: Skipping AI analysis (trigger: ${TRIGGER}, exit status: ${COMMAND_EXIT_STATUS})"

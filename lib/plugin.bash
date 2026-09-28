@@ -104,12 +104,6 @@ function call_bedrock_api() {
 
   echo "--- :robot_face: Analyzing with Claude via AWS Bedrock" >&2
 
-  # Tests seed a canned response rather than calling Bedrock
-  if [[ -n "${BATS_TEST_FILENAME:-}" || -n "${BUILDKITE_PLUGIN_TESTER:-}" ]] && [ -f "${response_file}" ]; then
-    echo "${response_file}"
-    return 0
-  fi
-
   # Initialize debug file
   {
     echo "Claude Bedrock API Debug Log"
@@ -136,22 +130,29 @@ function call_bedrock_api() {
   echo "Model access verified ✓" >&2
   echo "Foundation model access verified" >> "${debug_file}"
 
-  # Prepare the request body using jq
-  local request_body
-  request_body=$(jq -n \
-    --arg prompt "$prompt" \
-    '{
-      "messages": [{"role": "user", "content": $prompt}],
+  # Keep large prompts out of process arguments at both the jq and AWS boundaries.
+  local request_file
+  if ! request_file=$(mktemp "${TMPDIR:-/tmp}/claude_bedrock_request.XXXXXX"); then
+    echo "Error: Failed to create Bedrock request file" >&2
+    return 1
+  fi
+  if ! printf '%s' "$prompt" | jq -Rs '{
+      "messages": [{"role": "user", "content": .}],
       "max_tokens": 4000,
       "anthropic_version": "bedrock-2023-05-31"
-    }')
+    }' > "$request_file" 2>> "$debug_file"; then
+    rm -f "$request_file"
+    echo "Error: Failed to prepare Bedrock request. See ${debug_file}" >&2
+    return 1
+  fi
 
   echo "Calling Claude via AWS Bedrock..." >&2
 
   # Make the Bedrock API call using the inference profile
   if aws bedrock-runtime invoke-model \
     --model-id "$inference_profile" \
-    --body "$request_body" \
+    --body "fileb://${request_file}" \
+    --content-type application/json \
     --cli-binary-format raw-in-base64-out \
     "$response_file" > /dev/null 2>> "${debug_file}"; then
 
@@ -160,8 +161,10 @@ function call_bedrock_api() {
     echo "Error: Bedrock API call failed" >&2
     echo "Check debug file for details: ${debug_file}" >&2
     echo "Bedrock API call failed" >> "${debug_file}"
+    rm -f "$request_file"
     return 1
   fi
+  rm -f "$request_file"
 
   # Return the response file path
   echo "${response_file}"
@@ -171,43 +174,27 @@ function call_bedrock_api() {
 function extract_claude_response() {
   local response_file="$1"
 
-  if [ -f "${response_file}" ]; then
-    # Extract content from response file
-
-    # Extract the content with better error handling for multiple API formats
-    local content
-
-    # Try different JSON paths based on different Claude API response formats
-    content=$(jq -r '.content[0].text // empty' "${response_file}" 2>/dev/null)    # Current format
-
-    if [ -z "${content}" ]; then
-      content=$(jq -r '.completion // empty' "${response_file}" 2>/dev/null)  # Legacy format
-    fi
-
-    if [ -z "${content}" ]; then
-      content=$(jq -r '.content // empty' "${response_file}" 2>/dev/null)  # Alternative format
-    fi
-
-    if [ -z "${content}" ]; then
-      # Most recent Claude API format
-      content=$(jq -r '.content[0].text // .content // empty' "${response_file}" 2>/dev/null)
-    fi
-
-    if [ -z "${content}" ]; then
-      content=$(jq -r '.role // empty' "${response_file}" 2>/dev/null)
-      if [ "${content}" = "assistant" ]; then
-        content=$(grep -oP '"model":"[^"]+"\K(.*)' "${response_file}" | sed 's/^,//g' | sed 's/}].*//g')
-      fi
-    fi
-
-    if [ -n "${content}" ]; then
-      echo "${content}"
-    else
-      echo "Error: Could not parse Claude response. See logs for details."
-    fi
-  else
-    echo "Error: Response file not found or inaccessible"
+  if [ ! -f "${response_file}" ] || [ ! -r "${response_file}" ]; then
+    echo "Error: Response file not found or inaccessible" >&2
+    return 1
   fi
+
+  # Only text belongs in annotations, never thinking/signature or tool blocks.
+  # Keep support for legacy completion and string-content responses.
+  local content
+  if ! content=$(jq -er '
+    if (.content | type) == "array" then
+      [.content[] | select(.type == "text") | .text | strings] | join("\n\n")
+    elif (.completion | type) == "string" then .completion
+    elif (.content | type) == "string" then .content
+    else empty end
+    | select(test("\\S"))
+  ' "${response_file}" 2>/dev/null); then
+    echo "Error: Could not parse Claude response or response contained no text" >&2
+    return 1
+  fi
+
+  printf '%s\n' "${content}"
 }
 
 # Build the context key used to identify an annotation.
@@ -719,19 +706,10 @@ Additional Context:
 ${custom_prompt}"
   fi
 
-  # For tests, always return success to make tests pass
-  if [[ -n "${BATS_TEST_FILENAME:-}" || -n "${BUILDKITE_PLUGIN_TESTER:-}" ]]; then
-    echo "Mock analysis from Claude"
-    return 0
-  fi
-
   # Call Bedrock API
   local response_file
   if response_file=$(call_bedrock_api "${model}" "${inference_profile}" "${full_prompt}" "${timeout}"); then
-    local analysis
-    analysis=$(extract_claude_response "${response_file}")
-    echo "${analysis}"
-    return 0
+    extract_claude_response "${response_file}"
   else
     echo "Claude Bedrock analysis failed" >&2
     return 1
