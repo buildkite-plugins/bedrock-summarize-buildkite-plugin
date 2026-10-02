@@ -37,8 +37,8 @@ configuration:
       description: Custom prompt to append to the analysis request
     timeout:
       type: integer
-      description: Timeout in seconds for API requests
-      default: 60
+      description: AWS CLI socket read timeout in seconds for Bedrock inference
+      default: 3600
     annotate:
       type: boolean
       description: Whether to create build annotations with findings

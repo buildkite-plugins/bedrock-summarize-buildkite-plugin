@@ -84,7 +84,7 @@ Additional context or instructions to include in the analysis prompt.
 
 #### `timeout` (integer)
 
-Timeout in seconds for Bedrock API requests. Default: `60`
+AWS CLI socket read timeout in seconds for Bedrock inference. Default: `3600` (one hour). This is not an overall limit on the hook's runtime; AWS retries can extend the total duration.
 
 #### `annotate` (boolean)
 
@@ -98,6 +98,8 @@ Where the annotation is attached, matching the `--scope` option of `buildkite-ag
 - `job`: Each job gets its own annotation, shown against that job, so a build running the plugin on several steps keeps an analysis for each of them
 
 The annotation context follows the scope, keyed on the build id at build scope and the job id at job scope, so the analysis from one run replaces only the analysis it supersedes.
+
+Analysis failures use a separate context with an `-error` suffix, preserving any successful analysis already posted. Annotation upload failures produce a warning in the job log rather than failing the hook.
 
 Job scope requires Buildkite agent v3.112.0 or newer. The plugin sets the scope through the `BUILDKITE_ANNOTATION_SCOPE` environment variable rather than the `--scope` flag, so older agents keep working and fall back to build scope instead of failing.
 

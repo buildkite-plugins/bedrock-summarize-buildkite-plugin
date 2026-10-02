@@ -14,7 +14,7 @@ TRIGGER=$(plugin_read_config TRIGGER "on-failure")
 ANALYSIS_LEVEL=$(plugin_read_config ANALYSIS_LEVEL "step")
 MAX_LOG_LINES=$(plugin_read_config MAX_LOG_LINES "1000")
 CUSTOM_PROMPT=$(plugin_read_config CUSTOM_PROMPT "")
-TIMEOUT=$(plugin_read_config TIMEOUT "60")
+TIMEOUT=$(plugin_read_config TIMEOUT "3600")
 ANNOTATE=$(plugin_read_config ANNOTATE "true")
 ANNOTATION_SCOPE=$(plugin_read_config ANNOTATION_SCOPE "build")
 ALLOW_MULTIPLE_ANNOTATIONS=$(plugin_read_config ALLOW_MULTIPLE_ANNOTATIONS "false")
@@ -32,7 +32,7 @@ validate_tools || exit 1
 # Validate configuration
 validate_configuration "${MODEL}" "${INFERENCE_PROFILE}" "${TRIGGER}" "${ANALYSIS_LEVEL}" "${COMPARE_BUILDS}" "$(plugin_read_config BUILDKITE_API_TOKEN "")" "${ANNOTATION_SCOPE}" || exit 1
 
-# Resolved once so the success and failure annotations share a context
+# Resolve the base context once; analysis failures use a separate error context.
 ANNOTATION_CONTEXT=$(annotation_context "${ANNOTATION_SCOPE}" "${ALLOW_MULTIPLE_ANNOTATIONS}")
 
 echo "--- :robot_face: Bedrock Summarize Plugin (Post-Command)"
@@ -123,7 +123,7 @@ ANNOTATION
       # Use the file for annotation
       formatted_analysis="${annotation_file}"
 
-      create_annotation "${annotation_title}" "${formatted_analysis}" "${annotation_style}" "${ANNOTATION_CONTEXT}" "${ANNOTATION_SCOPE}"
+      create_annotation "${annotation_title}" "${formatted_analysis}" "${annotation_style}" "${ANNOTATION_CONTEXT}" "${ANNOTATION_SCOPE}" || echo "Warning: failed to create annotation" >&2
     fi
 
     if [ "${ANNOTATE}" = "true" ]; then
@@ -170,7 +170,7 @@ $([ "${COMPARE_BUILDS}" = "true" ] && echo "- Historical Comparison: Last ${COMP
 <sub>Generated at $(date)</sub>
 ERROR
       error_annotation="${error_file}"
-      create_annotation "AI Analysis Failed" "${error_annotation}" "warning" "${ANNOTATION_CONTEXT}" "${ANNOTATION_SCOPE}"
+      create_annotation "AI Analysis Failed" "${error_annotation}" "warning" "${ANNOTATION_CONTEXT}-error" "${ANNOTATION_SCOPE}" || echo "Warning: failed to create annotation" >&2
     fi
   fi
 else

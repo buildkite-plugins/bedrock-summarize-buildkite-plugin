@@ -91,12 +91,12 @@ function get_build_logs() {
   fi
 }
 
-# Call AWS Bedrock API for analysis
-function call_bedrock_api() {
+# Call AWS Bedrock API for analysis. Isolate the cleanup trap from callers.
+function call_bedrock_api() (
   local model="$1"
   local inference_profile="$2"
   local prompt="$3"
-  local timeout="${4:-60}"
+  local timeout="${4:-3600}"
 
   local invocation="${BUILDKITE_JOB_ID:-${BUILDKITE_BUILD_ID}}_$$"
   local response_file="/tmp/claude_bedrock_response_${invocation}.json"
@@ -136,12 +136,12 @@ function call_bedrock_api() {
     echo "Error: Failed to create Bedrock request file" >&2
     return 1
   fi
+  trap 'rm -f "$request_file"' EXIT
   if ! printf '%s' "$prompt" | jq -Rs '{
       "messages": [{"role": "user", "content": .}],
       "max_tokens": 4000,
       "anthropic_version": "bedrock-2023-05-31"
     }' > "$request_file" 2>> "$debug_file"; then
-    rm -f "$request_file"
     echo "Error: Failed to prepare Bedrock request. See ${debug_file}" >&2
     return 1
   fi
@@ -154,6 +154,7 @@ function call_bedrock_api() {
     --body "fileb://${request_file}" \
     --content-type application/json \
     --cli-binary-format raw-in-base64-out \
+    --cli-read-timeout "${timeout}" \
     "$response_file" > /dev/null 2>> "${debug_file}"; then
 
     echo "Bedrock API call successful" >> "${debug_file}"
@@ -161,14 +162,12 @@ function call_bedrock_api() {
     echo "Error: Bedrock API call failed" >&2
     echo "Check debug file for details: ${debug_file}" >&2
     echo "Bedrock API call failed" >> "${debug_file}"
-    rm -f "$request_file"
     return 1
   fi
-  rm -f "$request_file"
 
   # Return the response file path
   echo "${response_file}"
-}
+)
 
 # Extract Claude's response content
 function extract_claude_response() {
@@ -471,7 +470,7 @@ function analyze_build_failure() {
   local inference_profile="$2"
   local max_log_lines="$3"
   local custom_prompt="${4:-}"
-  local timeout="${5:-60}"
+  local timeout="${5:-3600}"
   local agent_file="${6:-false}"
   local analysis_level="${7:-step}"
   local compare_builds="${8:-false}"

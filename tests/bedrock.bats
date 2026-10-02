@@ -13,7 +13,7 @@ setup() {
   export BUILDKITE_COMMAND_EXIT_STATUS=1
   export BUILDKITE_API_TOKEN="test-token"
   export TMPDIR="$BATS_TEST_TMPDIR/tmp"
-  mkdir -p "$BATS_TEST_TMPDIR/bin" "$TMPDIR"
+  mkdir -p "$BATS_TEST_TMPDIR/bin" "$BATS_TEST_TMPDIR/annotations" "$TMPDIR"
   export PATH="$BATS_TEST_TMPDIR/bin:$PATH"
   printf '%s\n' 'failed command output' > "$BATS_TEST_TMPDIR/logs"
   printf '%s\n' '{"content":[{"type":"text","text":"# Analysis\n\nCheck `config`."}]}' > "$BATS_TEST_TMPDIR/response"
@@ -28,6 +28,7 @@ case "$*" in
   *get-caller-identity*|*get-foundation-model*) echo '{}' ;;
   *invoke-model*)
     touch "$BATS_TEST_TMPDIR/invoked"
+    printf '%s\n' "$@" > "$BATS_TEST_TMPDIR/aws-args"
     response="${@: -1}"
     while [ "$1" != --body ]; do shift; done
     body="$2"
@@ -36,6 +37,10 @@ case "$*" in
     printf '%s' "$request" > "$BATS_TEST_TMPDIR/request-path"
     [ "$(stat -c %a "$request")" = 600 ]
     cp "$request" "$BATS_TEST_TMPDIR/request"
+    if [ "${CANCEL_AWS:-false}" = true ]; then
+      kill -TERM "$PPID"
+      exit 0
+    fi
     if [ "${FAIL_AWS:-false}" = true ]; then exit 1; fi
     cp "$BATS_TEST_TMPDIR/response" "$response"
     ;;
@@ -52,7 +57,13 @@ CURL
   cat > "$BATS_TEST_TMPDIR/bin/buildkite-agent" <<'AGENT'
 #!/bin/bash
 printf '%s\n' "$*" >> "$BATS_TEST_TMPDIR/annotation-calls"
+if [ "${FAIL_ANNOTATION:-false}" = true ]; then
+  cat > /dev/null
+  exit 1
+fi
+while [ "$1" != --context ]; do shift; done
 cat > "$BATS_TEST_TMPDIR/annotation"
+cp "$BATS_TEST_TMPDIR/annotation" "$BATS_TEST_TMPDIR/annotations/$2"
 AGENT
   chmod +x "$BATS_TEST_TMPDIR/bin/"*
 }
@@ -134,6 +145,42 @@ JSON
   [ ! -e "$(cat "$BATS_TEST_TMPDIR/request-path")" ]
 }
 
+@test "Terminating the Bedrock invocation cleans up its request file" {
+  export CANCEL_AWS=true
+  run bash -c 'source lib/plugin.bash; response=$(call_bedrock_api model profile prompt)'
+  assert_failure 143
+  [ -s "$BATS_TEST_TMPDIR/request-path" ]
+  [ ! -e "$(cat "$BATS_TEST_TMPDIR/request-path")" ]
+}
+
+@test "Request cleanup preserves the caller's EXIT trap" {
+  run bash -c '
+    source lib/plugin.bash
+    trap "echo caller-cleanup" EXIT
+    call_bedrock_api model profile prompt
+    [ ! -e "$(cat "$BATS_TEST_TMPDIR/request-path")" ]
+    echo caller-continued
+  '
+  assert_success
+  assert_output --partial 'caller-continued'
+  assert_output --partial 'caller-cleanup'
+}
+
+@test "Hook passes the default and configured read timeout to AWS" {
+  local timeout
+  for timeout in 3600 137; do
+    if [ "$timeout" = 3600 ]; then
+      unset BUILDKITE_PLUGIN_BEDROCK_SUMMARIZE_TIMEOUT
+    else
+      export BUILDKITE_PLUGIN_BEDROCK_SUMMARIZE_TIMEOUT="$timeout"
+    fi
+    run "$PWD/hooks/post-command"
+    assert_success
+    run awk '/^--cli-read-timeout$/ { getline; print }' "$BATS_TEST_TMPDIR/aws-args"
+    assert_output "$timeout"
+  done
+}
+
 @test "Hook annotates extracted Markdown through the real large-log analysis path" {
   head -c 160000 /dev/zero | tr '\0' x > "$BATS_TEST_TMPDIR/logs"
   printf '\nFAILURE AT END\n' >> "$BATS_TEST_TMPDIR/logs"
@@ -200,4 +247,33 @@ JSON
     run grep -F 'secret' "$BATS_TEST_TMPDIR/annotation"
     assert_failure 1
   done
+}
+
+@test "Annotation upload failures do not fail a successful user command" {
+  export BUILDKITE_COMMAND_EXIT_STATUS=0
+  export BUILDKITE_PLUGIN_BEDROCK_SUMMARIZE_TRIGGER=always
+  export FAIL_ANNOTATION=true
+  local failure
+  for failure in false true; do
+    export FAIL_AWS="$failure"
+    run "$PWD/hooks/post-command"
+    assert_success
+    assert_output --partial 'Warning: failed to create annotation'
+  done
+}
+
+@test "A failed analysis in another job preserves the build's successful annotation" {
+  local context="claude-analysis-${BUILDKITE_BUILD_ID}"
+  run "$PWD/hooks/post-command"
+  assert_success
+  cp "$BATS_TEST_TMPDIR/annotations/$context" "$BATS_TEST_TMPDIR/success-annotation"
+
+  # Clean the first job's temporary files before simulating a different job.
+  teardown
+  export BUILDKITE_JOB_ID="${BUILDKITE_BUILD_ID}-other"
+  export FAIL_AWS=true
+  run "$PWD/hooks/post-command"
+  assert_success
+  cmp "$BATS_TEST_TMPDIR/success-annotation" "$BATS_TEST_TMPDIR/annotations/$context"
+  grep -F 'AI Analysis Failed' "$BATS_TEST_TMPDIR/annotations/${context}-error"
 }
