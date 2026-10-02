@@ -19,8 +19,8 @@ function get_step_logs() {
     # Check if the response is JSON and extract content field
     if grep -q '"content":' "${log_file}.raw" 2>/dev/null; then
       if command -v jq >/dev/null 2>&1; then
-        # Extract content field from JSON response
-        jq -r '.content' "${log_file}.raw" > "${log_file}.content" 2>/dev/null
+        # Preserve original line endings so jq does not add a line to the limit.
+        jq -jr '.content' "${log_file}.raw" > "${log_file}.content" 2>/dev/null
         if [ -s "${log_file}.content" ]; then
           # Process the extracted content and take last N lines
           tail -n "${max_lines}" "${log_file}.content" > "${log_file}"
