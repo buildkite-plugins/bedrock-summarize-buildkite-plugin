@@ -26,7 +26,7 @@ steps:
   - label: "🧪 Run tests"
     command: "npm test"
     plugins:
-      - bedrock-summarize#v1.0.0: ~
+      - bedrock-summarize#v1.1.0: ~
 ```
 
 If your Buildkite agents are running in AWS, you could consider using the [OIDC Assume Role plugin](https://buildkite.com/resources/plugins/buildkite-plugins/aws-assume-role-with-web-identity-buildkite-plugin/) in conjunction with Bedrock Summarize. After creating an IAM role in AWS that has permission to use Bedrock, a configuration like this will allow your agent to assume that role when it uses the plugin:
@@ -36,7 +36,7 @@ steps:
   - label: "🧪 Run tests"
     command: "npm test"
     plugins:
-      - bedrock-summarize#v1.0.0: ~
+      - bedrock-summarize#v1.1.0: ~
       - aws-assume-role-with-web-identity#v1.6.0:
           role-arn: arn:aws:iam::12345:role/bedrock-access
 ```
@@ -76,13 +76,15 @@ Level at which to analyze logs. Options: `step`, `build`. These require `buildki
 
 Maximum number of log lines to send to the LLM for analysis. Default: `1000`
 
+Requests are passed to the AWS CLI through a temporary file, so large log lines do not hit shell argument-size limits (`ARG_MAX`). This does not bypass Bedrock request-size or model context/token limits. If Bedrock rejects an oversized input, reduce `max_log_lines` or the additional context in `custom_prompt`; the plugin does not automatically trim to a model's token limit.
+
 #### `custom_prompt` (string)
 
 Additional context or instructions to include in the analysis prompt.
 
 #### `timeout` (integer)
 
-Timeout in seconds for Bedrock API requests. Default: `60`
+AWS CLI socket read timeout in seconds for Bedrock inference. Default: `3600` (one hour). This is not an overall limit on the hook's runtime; AWS retries can extend the total duration.
 
 #### `annotate` (boolean)
 
@@ -96,6 +98,8 @@ Where the annotation is attached, matching the `--scope` option of `buildkite-ag
 - `job`: Each job gets its own annotation, shown against that job, so a build running the plugin on several steps keeps an analysis for each of them
 
 The annotation context follows the scope, keyed on the build id at build scope and the job id at job scope, so the analysis from one run replaces only the analysis it supersedes.
+
+Analysis failures use a separate context with an `-error` suffix, preserving any successful analysis already posted. Annotation upload failures produce a warning in the job log rather than failing the hook.
 
 Job scope requires Buildkite agent v3.112.0 or newer. The plugin sets the scope through the `BUILDKITE_ANNOTATION_SCOPE` environment variable rather than the `--scope` flag, so older agents keep working and fall back to build scope instead of failing.
 
@@ -132,7 +136,7 @@ steps:
   - label: "🧪 Run tests"
     command: "npm test"
     plugins:
-      - bedrock-summarize#v1.0.0: ~
+      - bedrock-summarize#v1.1.0: ~
 ```
 
 When tests fail, the LLM will analyze the output and create an annotation with:
@@ -148,7 +152,7 @@ steps:
   - label: "🔍 Analyze entire build"
     command: "npm test"
     plugins:
-      - bedrock-summarize#v1.0.0:
+      - bedrock-summarize#v1.1.0:
           buildkite_api_token: "$$BUILDKITE_API_TOKEN"
           analysis_level: "build"
           trigger: "always"
@@ -163,13 +167,13 @@ steps:
   - label: "🧪 Run tests"
     command: "npm test"
     plugins:
-      - bedrock-summarize#v1.0.0:
+      - bedrock-summarize#v1.1.0:
           annotation_scope: "job"
 
   - label: "🏗️ Build application"
     command: "npm run build"
     plugins:
-      - bedrock-summarize#v1.0.0:
+      - bedrock-summarize#v1.1.0:
           annotation_scope: "job"
 ```
 
@@ -182,7 +186,7 @@ steps:
   - label: "🏗️ Build application"
     command: "npm run build"
     plugins:
-      - bedrock-summarize#v1.0.0:
+      - bedrock-summarize#v1.1.0:
           trigger: "always"
           custom_prompt: "Focus on build performance and optimization opportunities"
 ```
@@ -196,7 +200,7 @@ steps:
     env:
       BEDROCK_ANALYZE: "true"  # Trigger manual analysis
     plugins:
-      - bedrock-summarize#v1.0.0:
+      - bedrock-summarize#v1.1.0:
           trigger: "manual"
           custom_prompt: "This is a deployment script. Focus on infrastructure and configuration issues."
           max_log_lines: 2000
@@ -209,7 +213,7 @@ steps:
   - label: "🏗️ Build with performance tracking"
     command: "npm run build"
     plugins:
-      - bedrock-summarize#v1.0.0:
+      - bedrock-summarize#v1.1.0:
           compare_builds: true
           comparison_range: 10
           custom_prompt: "Focus on build performance trends and identify any performance regressions"
@@ -228,19 +232,19 @@ steps:
   - label: "🔍 Lint code"
     command: "npm run lint"
     plugins:
-      - bedrock-summarize#v1.0.0:
+      - bedrock-summarize#v1.1.0:
           custom_prompt: "Focus on code quality and style issues"
 
   - label: "🧪 Run tests"
     command: "npm test"
     plugins:
-      - bedrock-summarize#v1.0.0:
+      - bedrock-summarize#v1.1.0:
           custom_prompt: "Focus on test failures and coverage issues"
 
   - label: "🏗️ Build production"
     command: "npm run build:prod"
     plugins:
-      - bedrock-summarize#v1.0.0:
+      - bedrock-summarize#v1.1.0:
           trigger: "always"
           custom_prompt: "Focus on build optimization and bundle analysis"
 ```

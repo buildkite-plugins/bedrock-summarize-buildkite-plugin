@@ -31,6 +31,9 @@ EOF
       *"get-caller-identity"*)
         echo '{"Account": "123456789012"}'
         ;;
+      *"invoke-model"*)
+        printf '%s\n' '{"content":[{"type":"text","text":"Mock analysis from Claude"}]}' > "${@: -1}"
+        ;;
       *)
         return 0
         ;;
@@ -49,15 +52,16 @@ EOF
 
   stub curl \
     "* : echo '200'"
-  stub jq \
-    "* : echo 'Mock analysis from Claude'"
   source "$PWD/lib/plugin.bash"
 }
 
 teardown() {
+  rm -f /tmp/claude_bedrock_{response,debug}_"${BUILDKITE_JOB_ID:-$BUILDKITE_BUILD_ID}"_* \
+    "/tmp/buildkite_logs_${BUILDKITE_JOB_ID:-$BUILDKITE_BUILD_ID}.txt" \
+    "/tmp/ai_success_${BUILDKITE_JOB_ID:-$BUILDKITE_BUILD_ID}.md" \
+    "/tmp/ai_error_${BUILDKITE_JOB_ID:-$BUILDKITE_BUILD_ID}.md"
   rm -f "/tmp/test-bin/aws"
   unstub curl || true
-  unstub jq || true
   unstub buildkite-agent || true
 }
 
