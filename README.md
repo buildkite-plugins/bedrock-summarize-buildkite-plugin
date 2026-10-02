@@ -263,8 +263,6 @@ Run tests with
 docker compose run --rm tests
 ```
 
-Tests use real `jq` and mocked AWS/Buildkite commands; no cloud credentials are needed.
-
 ## 👩‍💻 Contributing
 
 1. Fork the repository
