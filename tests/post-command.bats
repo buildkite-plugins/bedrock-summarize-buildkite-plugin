@@ -17,10 +17,6 @@ setup() {
   export BUILDKITE_LABEL='Test Job'
   export BUILDKITE_BUILD_URL='https://buildkite.com/test/test-pipeline/builds/42'
 
-  # Pre-create the mock response file that our curl stub will reference
-  mkdir -p /tmp
-  printf '{"content":[{"text":"## Root Cause Analysis\nMock analysis from Claude\n\n## Suggested Fixes\n1. Check your configuration\n2. Verify dependencies"}]}' > "/tmp/claude_response_${BUILDKITE_BUILD_ID}.json"
-
   # Mock aws command for all tests
   # shellcheck disable=SC2329  # Mock command for BATS test; intentional redefinition
   aws() {
@@ -48,6 +44,9 @@ EOF
         # Return mock AWS identity JSON
         echo '{"UserId": "AIDACKCEVSQ6C2EXAMPLE", "Account": "123456789012", "Arn": "arn:aws:iam::123456789012:user/testuser"}'
         ;;
+      *"invoke-model"*)
+        printf '%s\n' '{"content":[{"type":"text","text":"Mock analysis from Claude"}]}' > "${@: -1}"
+        ;;
       *)
         # Default case - just return success
         return 0
@@ -72,8 +71,6 @@ EOF
   # Mock tools with simpler stubs
   stub curl \
     "* : echo '200'"
-  stub jq \
-    "* : echo 'Mock analysis from Claude'"
   stub buildkite-agent \
     "annotate --style * --context * : echo 'Annotation created'"
   # Note: aws is mocked as a function above, not with stub
@@ -81,7 +78,10 @@ EOF
 
 teardown() {
   # Clean up mock files
-  rm -f "/tmp/claude_response_${BUILDKITE_BUILD_ID:-test-build-123}.json"
+  rm -f /tmp/claude_bedrock_{response,debug}_"${BUILDKITE_JOB_ID}"_* \
+    "/tmp/buildkite_logs_${BUILDKITE_JOB_ID}.txt" \
+    "/tmp/ai_success_${BUILDKITE_JOB_ID}.md" \
+    "/tmp/ai_error_${BUILDKITE_JOB_ID}.md"
   rm -f "/tmp/buildkite_logs_${BUILDKITE_BUILD_ID:-test-build-123}.txt"
   rm -f "/tmp/claude_annotation_${BUILDKITE_BUILD_ID:-test-build-123}.md"
   rm -f "/tmp/claude_success_${BUILDKITE_BUILD_ID:-test-build-123}.md"
@@ -92,7 +92,6 @@ teardown() {
   
   # Only unstub if they were actually stubbed
   unstub curl || true
-  unstub jq || true
   unstub buildkite-agent || true
   # Note: aws is not stubbed, it's a function, so no unstub needed
 }
@@ -202,10 +201,6 @@ teardown() {
   # Should still analyze but not create annotations
   assert_output --partial 'AI Analysis Complete'
   refute_output --partial 'Creating annotation'
-}
-
-@test "Plugin handles API failure gracefully" {
-  skip "API failure testing is incompatible with test environment detection"
 }
 
 @test "Plugin uses API token from configuration" {
